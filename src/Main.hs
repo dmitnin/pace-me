@@ -9,6 +9,7 @@ import Data.ByteString (ByteString)
 import Data.Either (isLeft)
 import System.IO (hFlush, stdout)
 import Text.Printf (printf)
+import Control.Exception (try, IOException)
 
 
 packString :: String -> BS.ByteString
@@ -170,26 +171,27 @@ mainLoop = do
     putStr "> "
     hFlush stdout  -- Ensures the prompt is shown before user input
 
-    -- Read the user's input
-    input <- getLine
+    input <- try getLine :: IO (Either IOException String)
 
-    -- If the user types "exit", stop the loop
-    if input == "exit"
-        then putStrLn "Goodbye!"  -- Print a goodbye message
-        else do
-            let result = parseAndEvaluate input
-            case result of
-                Right op -> putStrLn (operandToString (Just op))
-                Left (Exception what) -> putStrLn what
+    case input of
+        Left _ -> putStrLn "\nReceived EOF, goodbye!"
+        Right input -> do
+            if input == "exit"
+                then putStrLn "Goodbye!"
+                else do
+                    let result = parseAndEvaluate input
+                    case result of
+                        Right op -> putStrLn (operandToString (Just op))
+                        Left (Exception what) -> putStrLn what
 
-            mainLoop  -- Call the function recursively to continue
+                    mainLoop  -- Call the function recursively to continue
 
 main :: IO ()
 main = do
-    putStrLn "Pace Maker: Type 'exit' to quit."
+    putStrLn "Pace Calculator: Type 'exit' to quit."
     mainLoop
 
-    let result = parseAndEvaluate "29:45 / 5.05"
-    case result of
-        Right op -> putStrLn (operandToString (Just op))
-        Left (Exception what) -> putStrLn what
+    -- let result = parseAndEvaluate "29:45 / 5.05"
+    -- case result of
+    --     Right op -> putStrLn (operandToString (Just op))
+    --     Left (Exception what) -> putStrLn what
