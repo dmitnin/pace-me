@@ -11,6 +11,7 @@ import Text.Printf (printf)
 
 data Operand = Distance Float | Time Float | Pace Float
 data Operator = Add | Sub | Mul | Div | Unknown
+data Exception = Exception String
 
 asOperator :: String -> Either Exception Operator
 asOperator s
@@ -32,8 +33,6 @@ asDistance s =
     in case result of
         Just captures -> Right (Just (distanceFromString (head captures)))
         _ -> Right Nothing
-
-data Exception = Exception String
 
 timeFromString :: [String] -> Either Exception Operand
 timeFromString ["", minStr, secStr] = timeFromString ["0", minStr, secStr]
