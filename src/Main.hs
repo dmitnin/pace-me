@@ -45,8 +45,6 @@ asOperator s
     | s == "/" = Right Div
     | otherwise = Left $ Exception ("Unknown operator " ++ s)
 
--- parse Operand :: String -> Maybe Operand
-
 matchCaptures :: String -> String -> Maybe [String]
 matchCaptures valueStr regexStr =
     let regex = compile (packString regexStr) []
