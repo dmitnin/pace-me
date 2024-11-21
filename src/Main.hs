@@ -1,38 +1,13 @@
 -- {-# LANGUAGE OverloadedStrings #-}
 
-import Text.Regex.PCRE.Light (match, compile, Regex)
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE  -- For encoding Text to ByteString
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as BSC8
-import Data.ByteString (ByteString)
+import XTL.Regex (matchCaptures)
+import XTL.Utils (getRight)
+
 import Data.Either (isLeft)
 import System.IO (hFlush, stdout)
 import Text.Printf (printf)
 import Control.Exception (try, IOException)
 
-
-packString :: String -> BS.ByteString
-packString = TE.encodeUtf8 . T.pack
-
-unpackString :: BS.ByteString -> String
-unpackString = T.unpack . TE.decodeUtf8
-
--- Safe head function
-safeHead :: [a] -> Maybe a
-safeHead []    = Nothing
-safeHead (x:_) = Just x
-
--- Unpack ByteString to Text
-unpack :: Maybe ByteString -> T.Text
-unpack (Just bs) = TE.decodeUtf8 bs
-unpack Nothing   = T.pack ""
-
---checkMatch :: T.Text -> Regex -> Maybe String
---checkMatch input regex = 
---    case match regex (TE.encodeUtf8 input) [] of  -- Convert Text to ByteString
---        Just captures -> evaluate (map unpackString (drop 1 captures))
---        Nothing       -> Nothing
 
 data Operand = Distance Float | Time Float | Pace Float
 data Operator = Add | Sub | Mul | Div | Unknown
@@ -45,14 +20,6 @@ asOperator s
     | s == "/" = Right Div
     | otherwise = Left $ Exception ("Unknown operator " ++ s)
 
-matchCaptures :: String -> String -> Maybe [String]
-matchCaptures valueStr regexStr =
-    let regex = compile (packString regexStr) []
-        result = match regex (packString valueStr) []
-    in case result of
-        Just captures -> Just (map unpackString (drop 1 captures))
-        _ -> Nothing
-
 distanceFromString :: String -> Operand
 distanceFromString s = Distance (read s :: Float)
 
@@ -61,7 +28,7 @@ distanceToString (Distance d) = show d ++ " km"
 
 asDistance :: String -> Either Exception (Maybe Operand)
 asDistance s =
-    let result = matchCaptures s "^([0-9]+(?:\\.[0-9]*)?)$"
+    let result = matchCaptures "^([0-9]+(?:\\.[0-9]*)?)$" s
     in case result of
         Just captures -> Right (Just (distanceFromString (head captures)))
         _ -> Right Nothing
@@ -94,7 +61,7 @@ eitherToMaybeRight = fmap Just
 
 asTime :: String -> Either Exception (Maybe Operand)
 asTime s =
-    let result = matchCaptures s "^(?:([0-9]+):)?([0-9]+):([0-9]+)$"
+    let result = matchCaptures "^(?:([0-9]+):)?([0-9]+):([0-9]+)$" s
     in case result of
         Just captures -> eitherToMaybeRight (timeFromString captures)
         _ -> Right Nothing
@@ -114,7 +81,7 @@ paceToString (Pace p) = show mins ++ "'" ++ (printf "%05.2f" secs) ++ "\""
 
 asPace :: String -> Either Exception (Maybe Operand)
 asPace s =
-    let result = matchCaptures s "^([0-9]+)\\'([0-9]+)(?:\\\")?$"
+    let result = matchCaptures "^([0-9]+)\\'([0-9]+)(?:\\\")?$" s
     in case result of
         Just captures -> eitherToMaybeRight (paceFromString captures)
         _ -> Right Nothing
@@ -145,12 +112,6 @@ evaluateImpl (Distance d1) Sub (Distance d2) = Right (Distance (d1 - d2))
 evaluateImpl (Time t1) Sub (Time t2) = Right (Time (t1 - t2))
 evaluateImpl _ _ _ = Left (Exception "Cannot evaluate")
 
-getLeft :: Either a b -> a
-getLeft (Left x) = x
-
-getRight :: Either a b -> b
-getRight (Right x) = x
-
 evaluate :: [String] -> Either Exception Operand
 evaluate (leftStr:operatorStr:rightStr:_)
     | isLeft (leftOperand) = leftOperand
@@ -165,7 +126,7 @@ evaluate _ = Left (Exception "Evaluation error")
 
 parseAndEvaluate :: String -> Either Exception Operand
 parseAndEvaluate input =
-    let result = matchCaptures input "^\\s*([0-9:\\'\"\\.]+)\\s*([\\+\\-\\*\\/])\\s*([0-9:\\'\"\\.]+)\\s*$"
+    let result = matchCaptures "^\\s*([0-9:\\'\"\\.]+)\\s*([\\+\\-\\*\\/])\\s*([0-9:\\'\"\\.]+)\\s*$" input
     in case result of
         Just captures -> evaluate captures
         _ -> Left (Exception "Could not parse the expression")
