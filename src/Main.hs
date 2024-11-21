@@ -3,10 +3,10 @@
 import XTL.Regex (matchCaptures)
 import XTL.Utils (getRight)
 
-import Data.Either (isLeft)
-import System.IO (hFlush, stdout)
-import Text.Printf (printf)
 import Control.Exception (try, IOException)
+import System.Console.Haskeline
+import Data.Either (isLeft)
+import Text.Printf (printf)
 
 
 data Operand = Distance Float | Time Float | Pace Float
@@ -132,32 +132,22 @@ parseAndEvaluate input =
         _ -> Left (Exception "Could not parse the expression")
 
 
-mainLoop :: IO ()
-mainLoop = do
-    putStr "> "
-    hFlush stdout  -- Ensures the prompt is shown before user input
-
-    input <- try getLine :: IO (Either IOException String)
-
-    case input of
-        Left _ -> putStrLn "\nReceived EOF, goodbye!"
-        Right input -> do
-            if input == "exit"
-                then putStrLn "Goodbye!"
-                else do
+main :: IO ()
+main = runInputT defaultSettings $ do
+        outputStrLn "Welcome to Pace Calculator! Type 'q', 'quit', 'exit' or CTRL+D to quit."
+        mainLoop
+    where
+        mainLoop :: InputT IO ()
+        mainLoop = do
+            minput <- getInputLine "> "
+            case minput of
+                Nothing -> outputStrLn "Received EOF, goodbye!"
+                Just "exit" -> outputStrLn "Goodbye!"
+                Just "quit" -> outputStrLn "Goodbye!"
+                Just "q"    -> outputStrLn "Goodbye!"
+                Just input -> do
                     let result = parseAndEvaluate input
                     case result of
-                        Right op -> putStrLn (operandToString (Just op))
-                        Left (Exception what) -> putStrLn what
-
-                    mainLoop  -- Call the function recursively to continue
-
-main :: IO ()
-main = do
-    putStrLn "Pace Calculator: Type 'exit' to quit."
-    mainLoop
-
-    -- let result = parseAndEvaluate "29:45 / 5.05"
-    -- case result of
-    --     Right op -> putStrLn (operandToString (Just op))
-    --     Left (Exception what) -> putStrLn what
+                        Right op -> outputStrLn (operandToString (Just op))
+                        Left (Exception what) -> outputStrLn what
+                    mainLoop

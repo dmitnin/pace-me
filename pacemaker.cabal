@@ -9,6 +9,7 @@ executable pacemaker
                    , text
                    , pcre-light >= 0.4.1.2
                    , bytestring
+                   , haskeline >= 0.8
   hs-source-dirs:    src
   other-modules:     XTL.Regex, XTL.String, XTL.Utils
   default-language:  Haskell2010
