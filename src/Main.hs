@@ -10,7 +10,7 @@ import Text.Printf (printf)
 
 
 data Operand = Distance Float | Time Float | Pace Float
-data Operator = Add | Sub | Mul | Div | Unknown
+data Operator = Add | Sub | Mul | Div
 data Exception = Exception String
 
 asOperator :: String -> Either Exception Operator
