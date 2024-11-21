@@ -35,10 +35,12 @@ unpack Nothing   = T.pack ""
 --        Nothing       -> Nothing
 
 data Operand = Distance Float | Time Float | Pace Float
-data Operator = Mul | Div | Unknown
+data Operator = Add | Sub | Mul | Div | Unknown
 
 asOperator :: String -> Either Exception Operator
 asOperator s
+    | s == "+" = Right Add
+    | s == "-" = Right Sub
     | s == "*" = Right Mul
     | s == "/" = Right Div
     | otherwise = Left $ Exception ("Unknown operator " ++ s)
@@ -55,6 +57,9 @@ matchCaptures valueStr regexStr =
 
 distanceFromString :: String -> Operand
 distanceFromString s = Distance (read s :: Float)
+
+distanceToString :: Operand -> String
+distanceToString (Distance d) = show d ++ " km"
 
 asDistance :: String -> Either Exception (Maybe Operand)
 asDistance s =
@@ -76,7 +81,9 @@ timeFromString [hourStr, minStr, secStr]
           secs = read secStr :: Float
 
 timeToString :: Operand -> String
-timeToString (Time t) = show hours ++ ":" ++ (printf "%02d" mins) ++ ":" ++ (printf "%02d" secs)
+timeToString (Time t)
+    | t < 0 = "-" ++ (timeToString (Time (-t)))
+    | otherwise = show hours ++ ":" ++ (printf "%02d" mins) ++ ":" ++ (printf "%02d" secs)
     where t1 = round t :: Int
           secs = t1 `mod` 60
           t2 = t1 `div` 60
@@ -124,13 +131,10 @@ asOperand input =
                 Right Nothing  -> tryFuncs fs
     in tryFuncs [asPace, asTime, asDistance]
 
-
-
-
 operandToString :: Maybe Operand -> String
 operandToString (Just (Time a)) = "Time: " ++ timeToString (Time a)
 operandToString (Just (Pace a)) = "Pace: " ++ paceToString (Pace a)
-operandToString (Just (Distance a)) = "Distance: " ++ show a
+operandToString (Just (Distance a)) = "Distance: " ++ distanceToString (Distance a)
 operandToString Nothing = "???"
 
 evaluateImpl :: Operand -> Operator -> Operand -> Either Exception Operand
@@ -138,6 +142,9 @@ evaluateImpl (Time t) Div (Pace p) = Right (Distance (t / p))
 evaluateImpl (Time t) Div (Distance d) = Right (Pace (t / d))
 evaluateImpl (Pace p) Mul (Distance d) = Right (Time (p * d))
 evaluateImpl (Distance d) Mul (Pace p) = Right (Time (p * d))
+evaluateImpl (Distance d1) Add (Distance d2) = Right (Distance (d1 + d2))
+evaluateImpl (Distance d1) Sub (Distance d2) = Right (Distance (d1 - d2))
+evaluateImpl (Time t1) Sub (Time t2) = Right (Time (t1 - t2))
 evaluateImpl _ _ _ = Left (Exception "Cannot evaluate")
 
 getLeft :: Either a b -> a
@@ -160,7 +167,7 @@ evaluate _ = Left (Exception "Evaluation error")
 
 parseAndEvaluate :: String -> Either Exception Operand
 parseAndEvaluate input =
-    let result = matchCaptures input "^\\s*([0-9:\\'\"\\.]+)\\s*([\\*\\/])\\s*([0-9:\\'\"\\.]+)\\s*$"
+    let result = matchCaptures input "^\\s*([0-9:\\'\"\\.]+)\\s*([\\+\\-\\*\\/])\\s*([0-9:\\'\"\\.]+)\\s*$"
     in case result of
         Just captures -> evaluate captures
         _ -> Left (Exception "Could not parse the expression")
