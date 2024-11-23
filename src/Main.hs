@@ -1,11 +1,11 @@
 -- {-# LANGUAGE OverloadedStrings #-}
 
 import XTL.Regex (matchCaptures)
-import XTL.Utils (getRight)
+import XTL.Utils (getLeft, getRight)
 
 import Control.Exception (try, IOException)
 import System.Console.Haskeline
-import Data.Either (isLeft)
+import Data.Either (isLeft, isRight)
 import Text.Printf (printf)
 
 
@@ -131,6 +131,134 @@ parseAndEvaluate input =
         _ -> Left (Exception "Could not parse the expression")
 
 
+data Token = TokenOperand Float | TokenOperator Operator | TokenEof
+
+instance Show Token where
+    show (TokenOperand value) = show value
+    show (TokenOperator Add) = "+"
+    show (TokenOperator Sub) = "-"
+    show (TokenOperator Mul) = "*"
+    show (TokenOperator Div) = "/"
+
+tokenPriority :: Token -> Int
+tokenPriority (TokenOperand _) = 0
+tokenPriority (TokenOperator Mul) = 1
+tokenPriority (TokenOperator Div) = 1
+tokenPriority (TokenOperator Add) = 2
+tokenPriority (TokenOperator Sub) = 2
+tokenPriority (TokenEof) = 10
+
+popFromStack :: [Token] -> [Float] -> Either Exception ([Token], [Float])
+popFromStack ((TokenOperand value):stackRest) pool = Right (stackRest, [value] ++ pool)
+popFromStack ((TokenOperator Add):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs + rhs] ++ poolRest)
+popFromStack ((TokenOperator Sub):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs - rhs] ++ poolRest)
+popFromStack ((TokenOperator Mul):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs * rhs] ++ poolRest)
+popFromStack ((TokenOperator Div):stackRest) (rhs:lhs:poolRest)
+    | rhs == 0.0 = Left $ Exception "Division by zero"
+    | otherwise  = Right (stackRest, [lhs / rhs] ++ poolRest)
+popFromStack ((TokenOperator Add):stackRest) _ = Left (Exception "Not enough operands for operator +")
+popFromStack ((TokenOperator Sub):stackRest) _ = Left (Exception "Not enough operands for operator -")
+popFromStack ((TokenOperator Mul):stackRest) _ = Left (Exception "Not enough operands for operator *")
+popFromStack ((TokenOperator Div):stackRest) _ = Left (Exception "Not enough operands for operator /")
+popFromStack _ _ = Left (Exception "Internal error")
+
+popFromStackAndContinue :: Token -> [Token] -> [Float] -> Either Exception ([Token], [Float])
+popFromStackAndContinue token stack pool
+    | isLeft result = result
+    | isRight result =
+        let (newStack, newPool) = getRight result
+        in pushToStack token newStack newPool
+    where
+        result = popFromStack stack pool
+
+type Stack = [Token]
+type Pool = [Float]
+
+-- pushToStackAndContinue :: Token -> Stack -> Pool -> Either Exception (Stack, Pool)
+
+pushToStack :: Token -> Stack -> Pool -> Either Exception (Stack, Pool)
+--pushToStack (TokenEof) (TokenOperator Add:_) pool = Left (Exception "Not enough operands for operator +")
+--pushToStack (TokenEof) (TokenOperator Sub:_) pool = Left (Exception "Not enough operands for operator -")
+--pushToStack (TokenEof) (TokenOperator Mul:_) pool = Left (Exception "Not enough operands for operator *")
+--pushToStack (TokenEof) (TokenOperator Div:_) pool = Left (Exception "Not enough operands for operator /")
+pushToStack token [] pool = Right ([token], pool)
+pushToStack token (stackTop:stackRest) pool
+    | tokenPrio == 0        = Right ([token, stackTop] ++ stackRest, pool)
+    | tokenPrio < stackPrio = Right ([token, stackTop] ++ stackRest, pool)
+    | otherwise = popFromStackAndContinue token ([stackTop] ++ stackRest) pool
+    where
+        tokenPrio = tokenPriority token
+        stackPrio = tokenPriority stackTop
+
+popFromPool :: [Float] -> Either Exception Float
+popFromPool [] = Left (Exception "Pool is empty")
+popFromPool [result] = Right result
+popFromPool _ = Left (Exception "Multiple results in the pool")
+
+evalTokens :: [Token] -> [Token] -> [Float] -> Either Exception Float
+evalTokens (token:tokensRest) stack pool
+    | isLeft result = Left (getLeft result)
+    | isRight result =
+        let (newStack, newPool) = getRight result
+        in evalTokens tokensRest newStack newPool
+    where
+        result = pushToStack token stack pool
+evalTokens [] stack pool = popFromPool pool
+
+evalThem :: [Token] -> Either Exception Float
+evalThem tokens = evalTokens (tokens ++ [TokenEof]) [] []
+
+evalFinal :: String -> Either Exception Float
+evalFinal input =
+    let tokens = tokenize input
+    in case tokens of
+        Left ex -> Left ex
+        Right tokens -> evalThem tokens
+
+asTokenOperand :: String -> Maybe (Token, Int)
+asTokenOperand input =
+    let result = matchCaptures "^([0-9]+(?:\\.[0-9]+)?)" input
+    in case result of
+        Just captures -> Just $ (TokenOperand (read tokenStr :: Float), length tokenStr)
+            where
+                tokenStr = head captures
+        _ -> Nothing
+
+asTokenOperator :: String -> Maybe (Token, Int)
+asTokenOperator ('+':rest) = Just $ (TokenOperator Add, 1)
+asTokenOperator ('-':rest) = Just $ (TokenOperator Sub, 1)
+asTokenOperator ('*':rest) = Just $ (TokenOperator Mul, 1)
+asTokenOperator ('/':rest) = Just $ (TokenOperator Div, 1)
+asTokenOperator _ = Nothing
+
+popToken :: String -> Either Exception (Token, Int)
+popToken input =
+    let tryFuncs [] = Left (Exception ("Unexpected character '" ++ input ++ "'"))
+        tryFuncs (f:fs) =
+            case f input of
+                Just (token, len) -> Right (token, len)
+                Nothing    -> tryFuncs fs
+    in tryFuncs [asTokenOperand, asTokenOperator]
+
+
+
+tokenize :: String -> Either Exception [Token]
+tokenize [] = Right []
+tokenize (' ':rest) = tokenize rest
+tokenize input =
+    let result = popToken input
+    in case result of
+        Left ex -> Left ex
+        Right (token, tokenLen) ->
+            let subResult = tokenize (drop tokenLen input)
+            in case subResult of
+                Left ex -> Left ex
+                Right restTokens -> Right ([token] ++ restTokens)
+
+
+
+
+
 main :: IO ()
 main = runInputT defaultSettings $ do
         outputStrLn "Welcome to Pace Calculator! Type 'q', 'quit', 'exit' or CTRL+D to quit."
@@ -138,6 +266,11 @@ main = runInputT defaultSettings $ do
     where
         mainLoop :: InputT IO ()
         mainLoop = do
+            let result = evalFinal "0.33 + 3 / 4 + 0.12 * 8 / 0"
+            case result of
+                Right value -> outputStrLn (show value)
+                Left (Exception what) -> outputStrLn what
+
             minput <- getInputLine "> "
             case minput of
                 Nothing -> outputStrLn "Received EOF, goodbye!"
