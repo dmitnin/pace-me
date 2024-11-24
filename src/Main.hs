@@ -301,18 +301,18 @@ applyBinaryOperator BinaryDiv a b
 
 popFromStack :: Stack -> Pool -> Either Exception (Stack, Pool)
 popFromStack ((LexemeOperand value) : stackRest) pool = Right (stackRest, value : pool)
-popFromStack ((LexemeBinaryOp op) : stackRest) (rhs : lhs : poolRest)
-    | isLeft result = Left $ getLeft result
-    | isRight result = Right (stackRest, (getRight result) : poolRest)
-  where
-    result = applyBinaryOperator op lhs rhs
 popFromStack ((LexemeUnaryOp op) : stackRest) (rhs : poolRest)
     | isLeft result = Left $ getLeft result
     | isRight result = Right (stackRest, (getRight result) : poolRest)
   where
     result = applyUnaryOperator op rhs
-popFromStack ((LexemeBinaryOp op) : _) _ = Left $ Exception ("Not enough operands for binary operator " ++ show op)
+popFromStack ((LexemeBinaryOp op) : stackRest) (rhs : lhs : poolRest)
+    | isLeft result = Left $ getLeft result
+    | isRight result = Right (stackRest, (getRight result) : poolRest)
+  where
+    result = applyBinaryOperator op lhs rhs
 popFromStack ((LexemeUnaryOp op) : _) _ = Left $ Exception ("Not enough operands for unary operator " ++ show op)
+popFromStack ((LexemeBinaryOp op) : _) _ = Left $ Exception ("Not enough operands for binary operator " ++ show op)
 popFromStack _ _ = Left $ Exception "Internal error"
 
 popFromStackAndContinue :: Lexeme -> Stack -> Pool -> Either Exception (Stack, Pool)
