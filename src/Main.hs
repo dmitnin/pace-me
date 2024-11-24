@@ -20,7 +20,6 @@ data ExceptionWithOffset = ExceptionWithOffset
 buildExceptionWithOffset :: String -> Int -> ExceptionWithOffset
 buildExceptionWithOffset what offset = ExceptionWithOffset (Exception what) offset
 
-
 asOperator :: String -> Either Exception Operator
 asOperator s
     | s == "+" = Right Add
@@ -265,7 +264,7 @@ type Stack = [LexemeWithOffset]
 type Pool = [Double]
 
 getStackTopLexeme :: Stack -> Lexeme
-getStackTopLexeme (LexemeWithOffset lexeme _: _) = lexeme
+getStackTopLexeme (LexemeWithOffset lexeme _ : _) = lexeme
 
 {-
      | Stack
@@ -310,7 +309,6 @@ getStackPriority (LexemeBinaryOp BinaryAdd) =  6
 getStackPriority (LexemeBinaryOp BinarySub) =  6
 getStackPriority LexemeParenOpen            = 10
 {- FOURMOLU_ENABLE -}
-
 
 popFromStack :: Stack -> Pool -> Either ExceptionWithOffset (Stack, Pool)
 popFromStack ((LexemeWithOffset lexeme offset) : stackRest) pool =
@@ -454,7 +452,8 @@ main = runInputT defaultSettings $ do
                     Left (ExceptionWithOffset (Exception what) offset) -> do
                         outputStrLn ("\ESC[31m" ++ indent ++ "╷" ++ "\ESC[0m")
                         outputStrLn ("\ESC[31m" ++ indent ++ "└─── " ++ what ++ "\ESC[0m")
-                      where indent = replicate (offset + 2) ' '
+                      where
+                        indent = replicate (offset + 2) ' '
                 mainLoop
 
 -- minput <- getInputLine "> "
