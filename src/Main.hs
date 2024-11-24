@@ -230,10 +230,10 @@ popFromStack ((LexemeOperator Mul):stackRest) (rhs:lhs:poolRest) = Right (stackR
 popFromStack ((LexemeOperator Div):stackRest) (rhs:lhs:poolRest)
     | rhs == 0.0 = Left $ Exception "Division by zero"
     | otherwise  = Right (stackRest, [lhs / rhs] ++ poolRest)
-popFromStack ((LexemeOperator Add):stackRest) _ = Left (Exception "Not enough operands for operator +")
-popFromStack ((LexemeOperator Sub):stackRest) _ = Left (Exception "Not enough operands for operator -")
-popFromStack ((LexemeOperator Mul):stackRest) _ = Left (Exception "Not enough operands for operator *")
-popFromStack ((LexemeOperator Div):stackRest) _ = Left (Exception "Not enough operands for operator /")
+popFromStack ((LexemeOperator Add):_) _ = Left (Exception "Not enough operands for operator +")
+popFromStack ((LexemeOperator Sub):_) _ = Left (Exception "Not enough operands for operator -")
+popFromStack ((LexemeOperator Mul):_) _ = Left (Exception "Not enough operands for operator *")
+popFromStack ((LexemeOperator Div):_) _ = Left (Exception "Not enough operands for operator /")
 popFromStack _ _ = Left (Exception "Internal error")
 
 popFromStackAndContinue :: Lexeme -> Stack -> Pool -> Either Exception (Stack, Pool)
