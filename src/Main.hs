@@ -170,29 +170,29 @@ tryTokenCharacter ('(' : _) = Just (TokenOpenPar, 1)
 tryTokenCharacter (')' : _) = Just (TokenClosePar, 1)
 tryTokenCharacter _ = Nothing
 
-readToken :: String -> Either Exception (Token, Int)
-readToken input =
-    let tryFuncs [] = Left (Exception ("Unexpected character '" ++ input ++ "'"))
+readToken :: String -> Int -> Either Exception (TokenWithOffset, Int)
+readToken input offset =
+    let tryFuncs [] = Left (Exception ("Unexpected character at " ++ show offset ++ ": '" ++ input ++ "'"))
         tryFuncs (f : fs) =
             case f input of
-                Just (token, len) -> Right (token, len)
+                Just (token, tokenLen) -> Right (TokenWithOffset token offset, tokenLen)
                 Nothing -> tryFuncs fs
      in tryFuncs [tryTokenNumber, tryTokenCharacter]
 
-tokenizeImpl :: String -> Int -> Either Exception [Token]
+tokenizeImpl :: String -> Int -> Either Exception [TokenWithOffset]
 tokenizeImpl [] _ = Right []
 tokenizeImpl (' ' : rest) offset = tokenizeImpl rest (offset + 1)
 tokenizeImpl input offset =
-    let result = readToken input
+    let result = readToken input offset
      in case result of
             Left ex -> Left ex
-            Right (token, tokenLen) ->
+            Right (tokenWithOffset, tokenLen) ->
                 let subResult = tokenizeImpl (drop tokenLen input) (offset + tokenLen)
                  in case subResult of
                         Left ex -> Left ex
-                        Right restTokens -> Right (token : restTokens)
+                        Right restTokens -> Right (tokenWithOffset : restTokens)
 
-tokenize :: String -> Either Exception [Token]
+tokenize :: String -> Either Exception [TokenWithOffset]
 tokenize input = tokenizeImpl input 0
 
 data Lexeme = LexemeOperand Float | LexemeOperator Operator | LexemeOpen | LexemeClose | LexemeEof
@@ -296,55 +296,60 @@ pushToStackAndContinue lexeme stack pool
     inputPrio = getInputPriority lexeme
     stackPrio = getStackPriority (getStackTop stack)
 
-pushToStack :: Token -> Stack -> Pool -> Either Exception (Stack, Pool)
-pushToStack TokenEof (LexemeOperator op : _) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
-pushToStack TokenEof stack pool = pushToStackAndContinue LexemeEof stack pool
-pushToStack (TokenNumber value) (LexemeOperand _ : _) pool = Left (Exception "Operator expected")
-pushToStack (TokenNumber value) stack pool = pushToStackAndContinue (LexemeOperand value) stack pool
-pushToStack TokenPlus stack pool =
+pushToStack :: TokenWithOffset -> Stack -> Pool -> Either Exception (Stack, Pool)
+pushToStack (TokenWithOffset TokenEof offset) stack pool =
+    case stack of
+        (LexemeOperator op : _) -> Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
+        _ -> pushToStackAndContinue LexemeEof stack pool
+pushToStack (TokenWithOffset (TokenNumber value) offset) stack pool =
+    case stack of
+        (LexemeOperand _ : _) -> Left $ Exception "Operator expected"
+        _ -> pushToStackAndContinue (LexemeOperand value) stack pool
+pushToStack (TokenWithOffset TokenPlus offset) stack pool =
     case stack of
         [] -> pushToStackAndContinue (LexemeOperator Pos) stack pool
         (LexemeOpen : _) -> pushToStackAndContinue (LexemeOperator Pos) stack pool
         (LexemeOperator _ : _) -> pushToStackAndContinue (LexemeOperator Pos) stack pool
         _ -> pushToStackAndContinue (LexemeOperator Add) stack pool
-pushToStack TokenMinus stack pool =
+pushToStack (TokenWithOffset TokenMinus offset) stack pool =
     case stack of
         [] -> pushToStackAndContinue (LexemeOperator Neg) stack pool
         (LexemeOpen : _) -> pushToStackAndContinue (LexemeOperator Neg) stack pool
         (LexemeOperator _ : _) -> pushToStackAndContinue (LexemeOperator Neg) stack pool
         _ -> pushToStackAndContinue (LexemeOperator Sub) stack pool
-pushToStack TokenStar stack pool = pushToStackAndContinue (LexemeOperator Mul) stack pool
-pushToStack TokenSlash stack pool = pushToStackAndContinue (LexemeOperator Div) stack pool
-pushToStack TokenOpenPar (LexemeOperand _ : _) pool = Left (Exception "Operator expected")
-pushToStack TokenOpenPar stack pool = pushToStackAndContinue LexemeOpen stack pool
-pushToStack TokenClosePar (LexemeOperator op : _) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
-pushToStack TokenClosePar (LexemeOpen : _) pool = Left (Exception "Empty parentheses")
-pushToStack TokenClosePar stack pool = pushToStackAndContinue LexemeClose stack pool
+pushToStack (TokenWithOffset TokenStar offset) stack pool = pushToStackAndContinue (LexemeOperator Mul) stack pool
+pushToStack (TokenWithOffset TokenSlash offset) stack pool = pushToStackAndContinue (LexemeOperator Div) stack pool
+pushToStack (TokenWithOffset TokenOpenPar offset) stack pool =
+    case stack of
+        (LexemeOperand _ : _) -> Left $ Exception "Operator expected"
+        _ -> pushToStackAndContinue LexemeOpen stack pool
+pushToStack (TokenWithOffset TokenClosePar offset) stack pool =
+    case stack of
+        (LexemeOperator op : _) -> Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
+        (LexemeOpen : _) -> Left $ Exception "Empty parentheses"
+        _ -> pushToStackAndContinue LexemeClose stack pool
 
 popFromPool :: [Float] -> Either Exception Float
 popFromPool [] = Left (Exception "Pool is empty")
 popFromPool [result] = Right result
 popFromPool _ = Left (Exception "Multiple results in the pool")
 
-evalTokens :: [Token] -> Stack -> Pool -> Either Exception Float
-evalTokens (token : tokensRest) stack pool
-    | isLeft result = Left (getLeft result)
+evalTokens :: [TokenWithOffset] -> Stack -> Pool -> Either Exception Float
+evalTokens (tokenWithOffset : tokensRest) stack pool
+    | isLeft result = Left $ getLeft result
     | isRight result =
         let (newStack, newPool) = getRight result
          in evalTokens tokensRest newStack newPool
   where
-    result = pushToStack token stack pool
+    result = pushToStack tokenWithOffset stack pool
 evalTokens [] stack pool = popFromPool pool
-
-evalThem :: [Token] -> Either Exception Float
-evalThem tokens = evalTokens (tokens ++ [TokenEof]) [] []
 
 evalFinal :: String -> Either Exception Float
 evalFinal input =
     let tokens = tokenize input
      in case tokens of
             Left ex -> Left ex
-            Right tokens -> evalThem tokens
+            Right tokens -> evalTokens (tokens ++ [TokenWithOffset TokenEof (length input)]) [] []
 
 main :: IO ()
 main = runInputT defaultSettings $ do
