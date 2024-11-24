@@ -187,6 +187,16 @@ tokenize input =
 
 data Lexeme = LexemeOperand Float | LexemeOperator Operator | LexemeOpen | LexemeClose | LexemeEof
 
+instance Show Lexeme where
+    show (LexemeOperand value) = show value
+    show (LexemeOperator Add) = "+"
+    show (LexemeOperator Sub) = "-"
+    show (LexemeOperator Mul) = "*"
+    show (LexemeOperator Div) = "/"
+    show (LexemeOpen)         = "("
+    show (LexemeClose)        = ")"
+    show (LexemeEof)          = "EOF"
+
 type Stack = [Lexeme]
 type Pool = [Float]
 
@@ -194,20 +204,23 @@ getStackTop :: Stack -> Lexeme
 getStackTop (top:_) = top
 
 getInputPriority :: Lexeme -> Int
-getInputPriority (LexemeOperand _) = 0
+getInputPriority (LexemeOperand _)    = 0
+getInputPriority (LexemeOpen)         = 0
 getInputPriority (LexemeOperator Mul) = 2
 getInputPriority (LexemeOperator Div) = 2
 getInputPriority (LexemeOperator Add) = 4
 getInputPriority (LexemeOperator Sub) = 4
-getInputPriority (LexemeEof) = 10
+getInputPriority (LexemeClose)        = 8
+getInputPriority (LexemeEof)          = 9
 
 getStackPriority :: Lexeme -> Int
-getStackPriority (LexemeOperand _) = 0
+getStackPriority (LexemeOperand _)    = 0
 getStackPriority (LexemeOperator Mul) = 1
 getStackPriority (LexemeOperator Div) = 1
 getStackPriority (LexemeOperator Add) = 3
 getStackPriority (LexemeOperator Sub) = 3
-getStackPriority (LexemeEof) = 10
+getStackPriority (LexemeOpen)         = 8
+getStackPriority (LexemeEof)          = 9
 
 popFromStack :: Stack -> Pool -> Either Exception (Stack, Pool)
 popFromStack ((LexemeOperand value):stackRest) pool = Right (stackRest, [value] ++ pool)
@@ -233,6 +246,9 @@ popFromStackAndContinue lexeme stack pool
         result = popFromStack stack pool
 
 pushToStackAndContinue :: Lexeme -> Stack -> Pool -> Either Exception (Stack, Pool)
+pushToStackAndContinue (LexemeClose) [] pool = Left (Exception "Unmatched closing bracket")
+pushToStackAndContinue (LexemeClose) (LexemeOpen:stackRest) (poolTop:poolRest) = Right ([(LexemeOperand poolTop)] ++ stackRest, poolRest)
+pushToStackAndContinue (LexemeEof) (LexemeOpen:_) pool = Left (Exception "Unmatched opening bracket")
 pushToStackAndContinue lexeme [] pool = Right ([lexeme], pool)
 pushToStackAndContinue lexeme stack pool
     | inputPrio < stackPrio = Right ([lexeme] ++ stack, pool)
@@ -242,17 +258,18 @@ pushToStackAndContinue lexeme stack pool
         stackPrio = getStackPriority (getStackTop stack)
 
 pushToStack :: Token -> Stack -> Pool -> Either Exception (Stack, Pool)
-pushToStack (TokenEof) (LexemeOperator Add:_) pool = Left (Exception "Not enough operands for operator +")
-pushToStack (TokenEof) (LexemeOperator Sub:_) pool = Left (Exception "Not enough operands for operator -")
-pushToStack (TokenEof) (LexemeOperator Mul:_) pool = Left (Exception "Not enough operands for operator *")
-pushToStack (TokenEof) (LexemeOperator Div:_) pool = Left (Exception "Not enough operands for operator /")
+pushToStack (TokenEof) (LexemeOperator op:_) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
 pushToStack (TokenEof) stack pool = pushToStackAndContinue (LexemeEof) stack pool
+pushToStack (TokenNumber value) (LexemeOperand _:_) pool = Left (Exception "Operator expected")
 pushToStack (TokenNumber value) stack pool = pushToStackAndContinue (LexemeOperand value) stack pool
 pushToStack (TokenOperator Add) stack pool = pushToStackAndContinue (LexemeOperator Add) stack pool
 pushToStack (TokenOperator Sub) stack pool = pushToStackAndContinue (LexemeOperator Sub) stack pool
 pushToStack (TokenOperator Mul) stack pool = pushToStackAndContinue (LexemeOperator Mul) stack pool
 pushToStack (TokenOperator Div) stack pool = pushToStackAndContinue (LexemeOperator Div) stack pool
+pushToStack (TokenOpen) (LexemeOperand _:_) pool = Left (Exception "Operator expected")
 pushToStack (TokenOpen)         stack pool = pushToStackAndContinue (LexemeOpen) stack pool
+pushToStack (TokenClose) (LexemeOperator op:_) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
+pushToStack (TokenClose) (LexemeOpen:_) pool = Left (Exception "Empty parentheses")
 pushToStack (TokenClose)        stack pool = pushToStackAndContinue (LexemeClose) stack pool
 
 popFromPool :: [Float] -> Either Exception Float
@@ -289,10 +306,10 @@ main = runInputT defaultSettings $ do
     where
         mainLoop :: InputT IO ()
         mainLoop = do
-            let result = evalFinal "3 - 4.2 - 1.0"
-            case result of
-                Right value -> outputStrLn (show value)
-                Left (Exception what) -> outputStrLn what
+            -- let result = evalFinal "(8 / ) "
+            -- case result of
+            --     Right value -> outputStrLn (show value)
+            --     Left (Exception what) -> outputStrLn what
 
             minput <- getInputLine "> "
             case minput of
@@ -301,8 +318,21 @@ main = runInputT defaultSettings $ do
                 Just "quit" -> outputStrLn "Goodbye!"
                 Just "q"    -> outputStrLn "Goodbye!"
                 Just input -> do
-                    let result = parseAndEvaluate input
+                    let result = evalFinal input
                     case result of
-                        Right op -> outputStrLn (operandToString (Just op))
+                        Right value -> outputStrLn $ show value
                         Left (Exception what) -> outputStrLn what
                     mainLoop
+
+            -- minput <- getInputLine "> "
+            -- case minput of
+            --     Nothing -> outputStrLn "Received EOF, goodbye!"
+            --     Just "exit" -> outputStrLn "Goodbye!"
+            --     Just "quit" -> outputStrLn "Goodbye!"
+            --     Just "q"    -> outputStrLn "Goodbye!"
+            --     Just input -> do
+            --         let result = parseAndEvaluate input
+            --         case result of
+            --             Right op -> outputStrLn (operandToString (Just op))
+            --             Left (Exception what) -> outputStrLn what
+            --         mainLoop
