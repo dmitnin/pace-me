@@ -130,72 +130,137 @@ parseAndEvaluate input =
         Just captures -> evaluate captures
         _ -> Left (Exception "Could not parse the expression")
 
+----------------------------------------------------------------------------------------------------
 
-data Token = TokenOperand Float | TokenOperator Operator | TokenEof
+data Token = TokenNumber Float | TokenOperator Operator | TokenOpen | TokenClose | TokenEof
 
 instance Show Token where
-    show (TokenOperand value) = show value
+    show (TokenNumber value) = show value
     show (TokenOperator Add) = "+"
     show (TokenOperator Sub) = "-"
     show (TokenOperator Mul) = "*"
     show (TokenOperator Div) = "/"
+    show (TokenOpen)         = "("
+    show (TokenClose)        = ")"
+    show (TokenEof)          = "EOF"
 
-tokenPriority :: Token -> Int
-tokenPriority (TokenOperand _) = 0
-tokenPriority (TokenOperator Mul) = 1
-tokenPriority (TokenOperator Div) = 1
-tokenPriority (TokenOperator Add) = 2
-tokenPriority (TokenOperator Sub) = 2
-tokenPriority (TokenEof) = 10
+asTokenNumber :: String -> Maybe (Token, Int)
+asTokenNumber input =
+    let result = matchCaptures "^([0-9]+(?:\\.[0-9]+)?)" input
+    in case result of
+        Just captures -> Just $ (TokenNumber (read tokenStr :: Float), length tokenStr)
+            where
+                tokenStr = head captures
+        _ -> Nothing
 
-popFromStack :: [Token] -> [Float] -> Either Exception ([Token], [Float])
-popFromStack ((TokenOperand value):stackRest) pool = Right (stackRest, [value] ++ pool)
-popFromStack ((TokenOperator Add):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs + rhs] ++ poolRest)
-popFromStack ((TokenOperator Sub):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs - rhs] ++ poolRest)
-popFromStack ((TokenOperator Mul):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs * rhs] ++ poolRest)
-popFromStack ((TokenOperator Div):stackRest) (rhs:lhs:poolRest)
+asTokenOperator :: String -> Maybe (Token, Int)
+asTokenOperator ('+':rest) = Just $ (TokenOperator Add, 1)
+asTokenOperator ('-':rest) = Just $ (TokenOperator Sub, 1)
+asTokenOperator ('*':rest) = Just $ (TokenOperator Mul, 1)
+asTokenOperator ('/':rest) = Just $ (TokenOperator Div, 1)
+asTokenOperator ('(':rest) = Just $ (TokenOpen, 1)
+asTokenOperator (')':rest) = Just $ (TokenClose, 1)
+asTokenOperator _ = Nothing
+
+popToken :: String -> Either Exception (Token, Int)
+popToken input =
+    let tryFuncs [] = Left (Exception ("Unexpected character '" ++ input ++ "'"))
+        tryFuncs (f:fs) =
+            case f input of
+                Just (token, len) -> Right (token, len)
+                Nothing    -> tryFuncs fs
+    in tryFuncs [asTokenNumber, asTokenOperator]
+
+tokenize :: String -> Either Exception [Token]
+tokenize [] = Right []
+tokenize (' ':rest) = tokenize rest
+tokenize input =
+    let result = popToken input
+    in case result of
+        Left ex -> Left ex
+        Right (token, tokenLen) ->
+            let subResult = tokenize (drop tokenLen input)
+            in case subResult of
+                Left ex -> Left ex
+                Right restTokens -> Right ([token] ++ restTokens)
+
+
+data Lexeme = LexemeOperand Float | LexemeOperator Operator | LexemeOpen | LexemeClose | LexemeEof
+
+type Stack = [Lexeme]
+type Pool = [Float]
+
+getStackTop :: Stack -> Lexeme
+getStackTop (top:_) = top
+
+getInputPriority :: Lexeme -> Int
+getInputPriority (LexemeOperand _) = 0
+getInputPriority (LexemeOperator Mul) = 2
+getInputPriority (LexemeOperator Div) = 2
+getInputPriority (LexemeOperator Add) = 4
+getInputPriority (LexemeOperator Sub) = 4
+getInputPriority (LexemeEof) = 10
+
+getStackPriority :: Lexeme -> Int
+getStackPriority (LexemeOperand _) = 0
+getStackPriority (LexemeOperator Mul) = 1
+getStackPriority (LexemeOperator Div) = 1
+getStackPriority (LexemeOperator Add) = 3
+getStackPriority (LexemeOperator Sub) = 3
+getStackPriority (LexemeEof) = 10
+
+popFromStack :: Stack -> Pool -> Either Exception (Stack, Pool)
+popFromStack ((LexemeOperand value):stackRest) pool = Right (stackRest, [value] ++ pool)
+popFromStack ((LexemeOperator Add):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs + rhs] ++ poolRest)
+popFromStack ((LexemeOperator Sub):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs - rhs] ++ poolRest)
+popFromStack ((LexemeOperator Mul):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs * rhs] ++ poolRest)
+popFromStack ((LexemeOperator Div):stackRest) (rhs:lhs:poolRest)
     | rhs == 0.0 = Left $ Exception "Division by zero"
     | otherwise  = Right (stackRest, [lhs / rhs] ++ poolRest)
-popFromStack ((TokenOperator Add):stackRest) _ = Left (Exception "Not enough operands for operator +")
-popFromStack ((TokenOperator Sub):stackRest) _ = Left (Exception "Not enough operands for operator -")
-popFromStack ((TokenOperator Mul):stackRest) _ = Left (Exception "Not enough operands for operator *")
-popFromStack ((TokenOperator Div):stackRest) _ = Left (Exception "Not enough operands for operator /")
+popFromStack ((LexemeOperator Add):stackRest) _ = Left (Exception "Not enough operands for operator +")
+popFromStack ((LexemeOperator Sub):stackRest) _ = Left (Exception "Not enough operands for operator -")
+popFromStack ((LexemeOperator Mul):stackRest) _ = Left (Exception "Not enough operands for operator *")
+popFromStack ((LexemeOperator Div):stackRest) _ = Left (Exception "Not enough operands for operator /")
 popFromStack _ _ = Left (Exception "Internal error")
 
-popFromStackAndContinue :: Token -> [Token] -> [Float] -> Either Exception ([Token], [Float])
-popFromStackAndContinue token stack pool
+popFromStackAndContinue :: Lexeme -> Stack -> Pool -> Either Exception (Stack, Pool)
+popFromStackAndContinue lexeme stack pool
     | isLeft result = result
     | isRight result =
         let (newStack, newPool) = getRight result
-        in pushToStack token newStack newPool
+        in pushToStackAndContinue lexeme newStack newPool
     where
         result = popFromStack stack pool
 
-type Stack = [Token]
-type Pool = [Float]
-
--- pushToStackAndContinue :: Token -> Stack -> Pool -> Either Exception (Stack, Pool)
+pushToStackAndContinue :: Lexeme -> Stack -> Pool -> Either Exception (Stack, Pool)
+pushToStackAndContinue lexeme [] pool = Right ([lexeme], pool)
+pushToStackAndContinue lexeme stack pool
+    | inputPrio < stackPrio = Right ([lexeme] ++ stack, pool)
+    | otherwise = popFromStackAndContinue lexeme stack pool
+    where
+        inputPrio = getInputPriority lexeme
+        stackPrio = getStackPriority (getStackTop stack)
 
 pushToStack :: Token -> Stack -> Pool -> Either Exception (Stack, Pool)
---pushToStack (TokenEof) (TokenOperator Add:_) pool = Left (Exception "Not enough operands for operator +")
---pushToStack (TokenEof) (TokenOperator Sub:_) pool = Left (Exception "Not enough operands for operator -")
---pushToStack (TokenEof) (TokenOperator Mul:_) pool = Left (Exception "Not enough operands for operator *")
---pushToStack (TokenEof) (TokenOperator Div:_) pool = Left (Exception "Not enough operands for operator /")
-pushToStack token [] pool = Right ([token], pool)
-pushToStack token (stackTop:stackRest) pool
-    | tokenPrio == 0        = Right ([token, stackTop] ++ stackRest, pool)
-    | tokenPrio < stackPrio = Right ([token, stackTop] ++ stackRest, pool)
-    | otherwise = popFromStackAndContinue token ([stackTop] ++ stackRest) pool
-    where
-        tokenPrio = tokenPriority token
-        stackPrio = tokenPriority stackTop
+pushToStack (TokenEof) (LexemeOperator Add:_) pool = Left (Exception "Not enough operands for operator +")
+pushToStack (TokenEof) (LexemeOperator Sub:_) pool = Left (Exception "Not enough operands for operator -")
+pushToStack (TokenEof) (LexemeOperator Mul:_) pool = Left (Exception "Not enough operands for operator *")
+pushToStack (TokenEof) (LexemeOperator Div:_) pool = Left (Exception "Not enough operands for operator /")
+pushToStack (TokenEof) stack pool = pushToStackAndContinue (LexemeEof) stack pool
+pushToStack (TokenNumber value) stack pool = pushToStackAndContinue (LexemeOperand value) stack pool
+pushToStack (TokenOperator Add) stack pool = pushToStackAndContinue (LexemeOperator Add) stack pool
+pushToStack (TokenOperator Sub) stack pool = pushToStackAndContinue (LexemeOperator Sub) stack pool
+pushToStack (TokenOperator Mul) stack pool = pushToStackAndContinue (LexemeOperator Mul) stack pool
+pushToStack (TokenOperator Div) stack pool = pushToStackAndContinue (LexemeOperator Div) stack pool
+pushToStack (TokenOpen)         stack pool = pushToStackAndContinue (LexemeOpen) stack pool
+pushToStack (TokenClose)        stack pool = pushToStackAndContinue (LexemeClose) stack pool
 
 popFromPool :: [Float] -> Either Exception Float
 popFromPool [] = Left (Exception "Pool is empty")
 popFromPool [result] = Right result
 popFromPool _ = Left (Exception "Multiple results in the pool")
 
-evalTokens :: [Token] -> [Token] -> [Float] -> Either Exception Float
+evalTokens :: [Token] -> Stack -> Pool -> Either Exception Float
 evalTokens (token:tokensRest) stack pool
     | isLeft result = Left (getLeft result)
     | isRight result =
@@ -215,48 +280,6 @@ evalFinal input =
         Left ex -> Left ex
         Right tokens -> evalThem tokens
 
-asTokenOperand :: String -> Maybe (Token, Int)
-asTokenOperand input =
-    let result = matchCaptures "^([0-9]+(?:\\.[0-9]+)?)" input
-    in case result of
-        Just captures -> Just $ (TokenOperand (read tokenStr :: Float), length tokenStr)
-            where
-                tokenStr = head captures
-        _ -> Nothing
-
-asTokenOperator :: String -> Maybe (Token, Int)
-asTokenOperator ('+':rest) = Just $ (TokenOperator Add, 1)
-asTokenOperator ('-':rest) = Just $ (TokenOperator Sub, 1)
-asTokenOperator ('*':rest) = Just $ (TokenOperator Mul, 1)
-asTokenOperator ('/':rest) = Just $ (TokenOperator Div, 1)
-asTokenOperator _ = Nothing
-
-popToken :: String -> Either Exception (Token, Int)
-popToken input =
-    let tryFuncs [] = Left (Exception ("Unexpected character '" ++ input ++ "'"))
-        tryFuncs (f:fs) =
-            case f input of
-                Just (token, len) -> Right (token, len)
-                Nothing    -> tryFuncs fs
-    in tryFuncs [asTokenOperand, asTokenOperator]
-
-
-
-tokenize :: String -> Either Exception [Token]
-tokenize [] = Right []
-tokenize (' ':rest) = tokenize rest
-tokenize input =
-    let result = popToken input
-    in case result of
-        Left ex -> Left ex
-        Right (token, tokenLen) ->
-            let subResult = tokenize (drop tokenLen input)
-            in case subResult of
-                Left ex -> Left ex
-                Right restTokens -> Right ([token] ++ restTokens)
-
-
-
 
 
 main :: IO ()
@@ -266,7 +289,7 @@ main = runInputT defaultSettings $ do
     where
         mainLoop :: InputT IO ()
         mainLoop = do
-            let result = evalFinal "0.33 + 3 / 4 + 0.12 * 8 / 0"
+            let result = evalFinal "3 - 4.2 - 1.0"
             case result of
                 Right value -> outputStrLn (show value)
                 Left (Exception what) -> outputStrLn what
