@@ -297,37 +297,41 @@ pushToStackAndContinue lexeme stack pool
     stackPrio = getStackPriority (getStackTop stack)
 
 pushToStack :: TokenWithOffset -> Stack -> Pool -> Either Exception (Stack, Pool)
-pushToStack (TokenWithOffset TokenEof offset) stack pool =
-    case stack of
-        (LexemeOperator op : _) -> Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
-        _ -> pushToStackAndContinue LexemeEof stack pool
-pushToStack (TokenWithOffset (TokenNumber value) offset) stack pool =
-    case stack of
-        (LexemeOperand _ : _) -> Left $ Exception "Operator expected"
-        _ -> pushToStackAndContinue (LexemeOperand value) stack pool
-pushToStack (TokenWithOffset TokenPlus offset) stack pool =
-    case stack of
-        [] -> pushToStackAndContinue (LexemeOperator Pos) stack pool
-        (LexemeOpen : _) -> pushToStackAndContinue (LexemeOperator Pos) stack pool
-        (LexemeOperator _ : _) -> pushToStackAndContinue (LexemeOperator Pos) stack pool
-        _ -> pushToStackAndContinue (LexemeOperator Add) stack pool
-pushToStack (TokenWithOffset TokenMinus offset) stack pool =
-    case stack of
-        [] -> pushToStackAndContinue (LexemeOperator Neg) stack pool
-        (LexemeOpen : _) -> pushToStackAndContinue (LexemeOperator Neg) stack pool
-        (LexemeOperator _ : _) -> pushToStackAndContinue (LexemeOperator Neg) stack pool
-        _ -> pushToStackAndContinue (LexemeOperator Sub) stack pool
-pushToStack (TokenWithOffset TokenStar offset) stack pool = pushToStackAndContinue (LexemeOperator Mul) stack pool
-pushToStack (TokenWithOffset TokenSlash offset) stack pool = pushToStackAndContinue (LexemeOperator Div) stack pool
-pushToStack (TokenWithOffset TokenOpenPar offset) stack pool =
-    case stack of
-        (LexemeOperand _ : _) -> Left $ Exception "Operator expected"
-        _ -> pushToStackAndContinue LexemeOpen stack pool
-pushToStack (TokenWithOffset TokenClosePar offset) stack pool =
-    case stack of
-        (LexemeOperator op : _) -> Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
-        (LexemeOpen : _) -> Left $ Exception "Empty parentheses"
-        _ -> pushToStackAndContinue LexemeClose stack pool
+pushToStack (TokenWithOffset token offset) stack pool =
+    case token of
+        TokenEof ->
+            case stack of
+                (LexemeOperator op : _) -> Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
+                _ -> pushToStackAndContinue LexemeEof stack pool
+        (TokenNumber value) ->
+            case stack of
+                (LexemeOperand _ : _) -> Left $ Exception "Operator expected"
+                _ -> pushToStackAndContinue (LexemeOperand value) stack pool
+        TokenPlus ->
+            case stack of
+                [] -> pushToStackAndContinue (LexemeOperator Pos) stack pool
+                (LexemeOpen : _) -> pushToStackAndContinue (LexemeOperator Pos) stack pool
+                (LexemeOperator _ : _) -> pushToStackAndContinue (LexemeOperator Pos) stack pool
+                _ -> pushToStackAndContinue (LexemeOperator Add) stack pool
+        TokenMinus ->
+            case stack of
+                [] -> pushToStackAndContinue (LexemeOperator Neg) stack pool
+                (LexemeOpen : _) -> pushToStackAndContinue (LexemeOperator Neg) stack pool
+                (LexemeOperator _ : _) -> pushToStackAndContinue (LexemeOperator Neg) stack pool
+                _ -> pushToStackAndContinue (LexemeOperator Sub) stack pool
+        TokenStar ->
+            pushToStackAndContinue (LexemeOperator Mul) stack pool
+        TokenSlash ->
+            pushToStackAndContinue (LexemeOperator Div) stack pool
+        TokenOpenPar ->
+            case stack of
+                (LexemeOperand _ : _) -> Left $ Exception "Operator expected"
+                _ -> pushToStackAndContinue LexemeOpen stack pool
+        TokenClosePar ->
+            case stack of
+                (LexemeOperator op : _) -> Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
+                (LexemeOpen : _) -> Left $ Exception "Empty parentheses"
+                _ -> pushToStackAndContinue LexemeClose stack pool
 
 popFromPool :: [Float] -> Either Exception Float
 popFromPool [] = Left (Exception "Pool is empty")
