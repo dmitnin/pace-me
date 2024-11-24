@@ -132,17 +132,17 @@ parseAndEvaluate input =
 
 ----------------------------------------------------------------------------------------------------
 
-data Token = TokenNumber Float | TokenOperator Operator | TokenOpen | TokenClose | TokenEof
+data Token = TokenNumber Float | TokenPlus | TokenMinus | TokenStar | TokenSlash | TokenOpenPar | TokenClosePar | TokenEof
 
 instance Show Token where
     show (TokenNumber value) = show value
-    show (TokenOperator Add) = "+"
-    show (TokenOperator Sub) = "-"
-    show (TokenOperator Mul) = "*"
-    show (TokenOperator Div) = "/"
-    show (TokenOpen)         = "("
-    show (TokenClose)        = ")"
-    show (TokenEof)          = "EOF"
+    show (TokenPlus)     = "+"
+    show (TokenMinus)    = "-"
+    show (TokenStar)     = "*"
+    show (TokenSlash)    = "/"
+    show (TokenOpenPar)  = "("
+    show (TokenClosePar) = ")"
+    show (TokenEof)      = "EOF"
 
 asTokenNumber :: String -> Maybe (Token, Int)
 asTokenNumber input =
@@ -153,14 +153,14 @@ asTokenNumber input =
                 tokenStr = head captures
         _ -> Nothing
 
-asTokenOperator :: String -> Maybe (Token, Int)
-asTokenOperator ('+':rest) = Just $ (TokenOperator Add, 1)
-asTokenOperator ('-':rest) = Just $ (TokenOperator Sub, 1)
-asTokenOperator ('*':rest) = Just $ (TokenOperator Mul, 1)
-asTokenOperator ('/':rest) = Just $ (TokenOperator Div, 1)
-asTokenOperator ('(':rest) = Just $ (TokenOpen, 1)
-asTokenOperator (')':rest) = Just $ (TokenClose, 1)
-asTokenOperator _ = Nothing
+asTokenCharacter :: String -> Maybe (Token, Int)
+asTokenCharacter ('+':_) = Just $ (TokenPlus, 1)
+asTokenCharacter ('-':_) = Just $ (TokenMinus, 1)
+asTokenCharacter ('*':_) = Just $ (TokenStar, 1)
+asTokenCharacter ('/':_) = Just $ (TokenSlash, 1)
+asTokenCharacter ('(':_) = Just $ (TokenOpenPar, 1)
+asTokenCharacter (')':_) = Just $ (TokenClosePar, 1)
+asTokenCharacter _ = Nothing
 
 popToken :: String -> Either Exception (Token, Int)
 popToken input =
@@ -169,7 +169,7 @@ popToken input =
             case f input of
                 Just (token, len) -> Right (token, len)
                 Nothing    -> tryFuncs fs
-    in tryFuncs [asTokenNumber, asTokenOperator]
+    in tryFuncs [asTokenNumber, asTokenCharacter]
 
 tokenize :: String -> Either Exception [Token]
 tokenize [] = Right []
@@ -262,15 +262,15 @@ pushToStack (TokenEof) (LexemeOperator op:_) pool = Left $ Exception ("Not enoug
 pushToStack (TokenEof) stack pool = pushToStackAndContinue (LexemeEof) stack pool
 pushToStack (TokenNumber value) (LexemeOperand _:_) pool = Left (Exception "Operator expected")
 pushToStack (TokenNumber value) stack pool = pushToStackAndContinue (LexemeOperand value) stack pool
-pushToStack (TokenOperator Add) stack pool = pushToStackAndContinue (LexemeOperator Add) stack pool
-pushToStack (TokenOperator Sub) stack pool = pushToStackAndContinue (LexemeOperator Sub) stack pool
-pushToStack (TokenOperator Mul) stack pool = pushToStackAndContinue (LexemeOperator Mul) stack pool
-pushToStack (TokenOperator Div) stack pool = pushToStackAndContinue (LexemeOperator Div) stack pool
-pushToStack (TokenOpen) (LexemeOperand _:_) pool = Left (Exception "Operator expected")
-pushToStack (TokenOpen)         stack pool = pushToStackAndContinue (LexemeOpen) stack pool
-pushToStack (TokenClose) (LexemeOperator op:_) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
-pushToStack (TokenClose) (LexemeOpen:_) pool = Left (Exception "Empty parentheses")
-pushToStack (TokenClose)        stack pool = pushToStackAndContinue (LexemeClose) stack pool
+pushToStack (TokenPlus) stack pool = pushToStackAndContinue (LexemeOperator Add) stack pool
+pushToStack (TokenMinus) stack pool = pushToStackAndContinue (LexemeOperator Sub) stack pool
+pushToStack (TokenStar) stack pool = pushToStackAndContinue (LexemeOperator Mul) stack pool
+pushToStack (TokenSlash) stack pool = pushToStackAndContinue (LexemeOperator Div) stack pool
+pushToStack (TokenOpenPar) (LexemeOperand _:_) pool = Left (Exception "Operator expected")
+pushToStack (TokenOpenPar)         stack pool = pushToStackAndContinue (LexemeOpen) stack pool
+pushToStack (TokenClosePar) (LexemeOperator op:_) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
+pushToStack (TokenClosePar) (LexemeOpen:_) pool = Left (Exception "Empty parentheses")
+pushToStack (TokenClosePar)        stack pool = pushToStackAndContinue (LexemeClose) stack pool
 
 popFromPool :: [Float] -> Either Exception Float
 popFromPool [] = Left (Exception "Pool is empty")
