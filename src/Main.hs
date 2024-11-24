@@ -231,17 +231,19 @@ getStackTop (top : _) = top
      |  2  |  4  |  4  |  6  |  6  |  6  |  6  |  10 |
 -}
 
+{- FOURMOLU_DISABLE -}
 getInputPriority :: Lexeme -> Int
-getInputPriority (LexemeOperand _) = 1
-getInputPriority (LexemeOperator Pos) = 3
-getInputPriority (LexemeOperator Neg) = 3
-getInputPriority LexemeOpen = 3
-getInputPriority (LexemeOperator Mul) = 5
-getInputPriority (LexemeOperator Div) = 5
-getInputPriority (LexemeOperator Add) = 7
-getInputPriority (LexemeOperator Sub) = 7
-getInputPriority LexemeClose = 9
-getInputPriority LexemeEof = 11
+getInputPriority (LexemeOperand _)    =  1
+getInputPriority (LexemeOperator Pos) =  3
+getInputPriority (LexemeOperator Neg) =  3
+getInputPriority LexemeOpen           =  3
+getInputPriority (LexemeOperator Mul) =  5
+getInputPriority (LexemeOperator Div) =  5
+getInputPriority (LexemeOperator Add) =  7
+getInputPriority (LexemeOperator Sub) =  7
+getInputPriority LexemeClose          =  9
+getInputPriority LexemeEof            = 11
+{- FOURMOLU_ENABLE -}
 
 {- FOURMOLU_DISABLE -}
 getStackPriority :: Lexeme -> Int
