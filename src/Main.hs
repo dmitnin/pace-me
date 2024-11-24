@@ -152,8 +152,8 @@ data TokenWithOffset = TokenWithOffset
     , offset :: Int
     }
 
-asTokenNumber :: String -> Maybe (Token, Int)
-asTokenNumber input =
+tryTokenNumber :: String -> Maybe (Token, Int)
+tryTokenNumber input =
     let result = matchCaptures "^([0-9]+(?:\\.[0-9]+)?)" input
      in case result of
             Just captures -> Just (TokenNumber (read tokenStr :: Float), length tokenStr)
@@ -161,29 +161,29 @@ asTokenNumber input =
                 tokenStr = head captures
             _ -> Nothing
 
-asTokenCharacter :: String -> Maybe (Token, Int)
-asTokenCharacter ('+' : _) = Just (TokenPlus, 1)
-asTokenCharacter ('-' : _) = Just (TokenMinus, 1)
-asTokenCharacter ('*' : _) = Just (TokenStar, 1)
-asTokenCharacter ('/' : _) = Just (TokenSlash, 1)
-asTokenCharacter ('(' : _) = Just (TokenOpenPar, 1)
-asTokenCharacter (')' : _) = Just (TokenClosePar, 1)
-asTokenCharacter _ = Nothing
+tryTokenCharacter :: String -> Maybe (Token, Int)
+tryTokenCharacter ('+' : _) = Just (TokenPlus, 1)
+tryTokenCharacter ('-' : _) = Just (TokenMinus, 1)
+tryTokenCharacter ('*' : _) = Just (TokenStar, 1)
+tryTokenCharacter ('/' : _) = Just (TokenSlash, 1)
+tryTokenCharacter ('(' : _) = Just (TokenOpenPar, 1)
+tryTokenCharacter (')' : _) = Just (TokenClosePar, 1)
+tryTokenCharacter _ = Nothing
 
-popToken :: String -> Either Exception (Token, Int)
-popToken input =
+readToken :: String -> Either Exception (Token, Int)
+readToken input =
     let tryFuncs [] = Left (Exception ("Unexpected character '" ++ input ++ "'"))
         tryFuncs (f : fs) =
             case f input of
                 Just (token, len) -> Right (token, len)
                 Nothing -> tryFuncs fs
-     in tryFuncs [asTokenNumber, asTokenCharacter]
+     in tryFuncs [tryTokenNumber, tryTokenCharacter]
 
 tokenizeImpl :: String -> Int -> Either Exception [Token]
 tokenizeImpl [] _ = Right []
 tokenizeImpl (' ' : rest) offset = tokenizeImpl rest (offset + 1)
 tokenizeImpl input offset =
-    let result = popToken input
+    let result = readToken input
      in case result of
             Left ex -> Left ex
             Right (token, tokenLen) ->
