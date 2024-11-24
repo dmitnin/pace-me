@@ -144,10 +144,10 @@ instance Show Token where
     show TokenClosePar = ")"
     show TokenEof      = "EOF"
 
--- data TokenWithOffset = TokenWithOffset
---     { token :: Token
---     , offset :: Int
---     } deriving (Show, Eq)
+data TokenWithOffset = TokenWithOffset
+    { token :: Token
+    , offset :: Int
+    }
 
 asTokenNumber :: String -> Maybe (Token, Int)
 asTokenNumber input =
@@ -176,18 +176,21 @@ popToken input =
                 Nothing    -> tryFuncs fs
     in tryFuncs [asTokenNumber, asTokenCharacter]
 
-tokenize :: String -> Either Exception [Token]
-tokenize [] = Right []
-tokenize (' ':rest) = tokenize rest
-tokenize input =
+tokenizeImpl :: String -> Int -> Either Exception [Token]
+tokenizeImpl [] _ = Right []
+tokenizeImpl (' ':rest) offset = tokenizeImpl rest (offset + 1)
+tokenizeImpl input offset =
     let result = popToken input
     in case result of
         Left ex -> Left ex
         Right (token, tokenLen) ->
-            let subResult = tokenize (drop tokenLen input)
+            let subResult = tokenizeImpl (drop tokenLen input) (offset + tokenLen)
             in case subResult of
                 Left ex -> Left ex
                 Right restTokens -> Right (token : restTokens)
+
+tokenize :: String -> Either Exception [Token]
+tokenize input = tokenizeImpl input 0
 
 
 data Lexeme = LexemeOperand Float | LexemeOperator Operator | LexemeOpen | LexemeClose | LexemeEof
