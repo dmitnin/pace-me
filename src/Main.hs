@@ -46,8 +46,8 @@ timeFromString [hourStr, minStr, secStr]
 
 timeToString :: Operand -> String
 timeToString (Time t)
-    | t < 0 = "-" ++ (timeToString (Time (-t)))
-    | otherwise = show hours ++ ":" ++ (printf "%02d" mins) ++ ":" ++ (printf "%02d" secs)
+    | t < 0 = "-" ++ timeToString (Time (-t))
+    | otherwise = show hours ++ ":" ++ printf "%02d" mins ++ ":" ++ printf "%02d" secs
     where t1 = round t :: Int
           secs = t1 `mod` 60
           t2 = t1 `div` 60
@@ -73,10 +73,10 @@ paceFromString [minStr, secStr]
           secs = read secStr :: Float
 
 paceToString :: Operand -> String
-paceToString (Pace p) = show mins ++ "'" ++ (printf "%05.2f" secs) ++ "\""
+paceToString (Pace p) = show mins ++ "'" ++ printf "%05.2f" secs ++ "\""
     where t = floor p :: Int
           mins = t `div` 60
-          secs = p - 60 * (fromIntegral mins)
+          secs = p - 60 * fromIntegral mins
 
 asPace :: String -> Either Exception (Maybe Operand)
 asPace s =
@@ -113,9 +113,9 @@ evaluateImpl _ _ _ = Left (Exception "Cannot evaluate")
 
 evaluate :: [String] -> Either Exception Operand
 evaluate (leftStr:operatorStr:rightStr:_)
-    | isLeft (leftOperand) = leftOperand
-    | isLeft (operator) = Left (Exception "TODO: Invalid operator")
-    | isLeft (rightOperand) = rightOperand
+    | isLeft leftOperand = leftOperand
+    | isLeft operator = Left (Exception "TODO: Invalid operator")
+    | isLeft rightOperand = rightOperand
     | otherwise = evaluateImpl (getRight leftOperand) (getRight operator) (getRight rightOperand)
     where
         leftOperand = asOperand leftStr
@@ -136,30 +136,35 @@ data Token = TokenNumber Float | TokenPlus | TokenMinus | TokenStar | TokenSlash
 
 instance Show Token where
     show (TokenNumber value) = show value
-    show (TokenPlus)     = "+"
-    show (TokenMinus)    = "-"
-    show (TokenStar)     = "*"
-    show (TokenSlash)    = "/"
-    show (TokenOpenPar)  = "("
-    show (TokenClosePar) = ")"
-    show (TokenEof)      = "EOF"
+    show TokenPlus     = "+"
+    show TokenMinus    = "-"
+    show TokenStar     = "*"
+    show TokenSlash    = "/"
+    show TokenOpenPar  = "("
+    show TokenClosePar = ")"
+    show TokenEof      = "EOF"
+
+-- data TokenWithOffset = TokenWithOffset
+--     { token :: Token
+--     , offset :: Int
+--     } deriving (Show, Eq)
 
 asTokenNumber :: String -> Maybe (Token, Int)
 asTokenNumber input =
     let result = matchCaptures "^([0-9]+(?:\\.[0-9]+)?)" input
     in case result of
-        Just captures -> Just $ (TokenNumber (read tokenStr :: Float), length tokenStr)
+        Just captures -> Just (TokenNumber (read tokenStr :: Float), length tokenStr)
             where
                 tokenStr = head captures
         _ -> Nothing
 
 asTokenCharacter :: String -> Maybe (Token, Int)
-asTokenCharacter ('+':_) = Just $ (TokenPlus, 1)
-asTokenCharacter ('-':_) = Just $ (TokenMinus, 1)
-asTokenCharacter ('*':_) = Just $ (TokenStar, 1)
-asTokenCharacter ('/':_) = Just $ (TokenSlash, 1)
-asTokenCharacter ('(':_) = Just $ (TokenOpenPar, 1)
-asTokenCharacter (')':_) = Just $ (TokenClosePar, 1)
+asTokenCharacter ('+':_) = Just (TokenPlus, 1)
+asTokenCharacter ('-':_) = Just (TokenMinus, 1)
+asTokenCharacter ('*':_) = Just (TokenStar, 1)
+asTokenCharacter ('/':_) = Just (TokenSlash, 1)
+asTokenCharacter ('(':_) = Just (TokenOpenPar, 1)
+asTokenCharacter (')':_) = Just (TokenClosePar, 1)
 asTokenCharacter _ = Nothing
 
 popToken :: String -> Either Exception (Token, Int)
@@ -182,7 +187,7 @@ tokenize input =
             let subResult = tokenize (drop tokenLen input)
             in case subResult of
                 Left ex -> Left ex
-                Right restTokens -> Right ([token] ++ restTokens)
+                Right restTokens -> Right (token : restTokens)
 
 
 data Lexeme = LexemeOperand Float | LexemeOperator Operator | LexemeOpen | LexemeClose | LexemeEof
@@ -193,9 +198,9 @@ instance Show Lexeme where
     show (LexemeOperator Sub) = "-"
     show (LexemeOperator Mul) = "*"
     show (LexemeOperator Div) = "/"
-    show (LexemeOpen)         = "("
-    show (LexemeClose)        = ")"
-    show (LexemeEof)          = "EOF"
+    show LexemeOpen           = "("
+    show LexemeClose          = ")"
+    show LexemeEof            = "EOF"
 
 type Stack = [Lexeme]
 type Pool = [Float]
@@ -225,13 +230,13 @@ getInputPriority :: Lexeme -> Int
 getInputPriority (LexemeOperand _)    =  1
 getInputPriority (LexemeOperator Pos) =  3
 getInputPriority (LexemeOperator Neg) =  3
-getInputPriority (LexemeOpen)         =  3
+getInputPriority LexemeOpen           =  3
 getInputPriority (LexemeOperator Mul) =  5
 getInputPriority (LexemeOperator Div) =  5
 getInputPriority (LexemeOperator Add) =  7
 getInputPriority (LexemeOperator Sub) =  7
-getInputPriority (LexemeClose)        =  9
-getInputPriority (LexemeEof)          = 11
+getInputPriority LexemeClose          =  9
+getInputPriority LexemeEof            = 11
 
 getStackPriority :: Lexeme -> Int
 getStackPriority (LexemeOperand _)    =  2
@@ -241,24 +246,24 @@ getStackPriority (LexemeOperator Pos) =  6
 getStackPriority (LexemeOperator Neg) =  6
 getStackPriority (LexemeOperator Add) =  6
 getStackPriority (LexemeOperator Sub) =  6
-getStackPriority (LexemeOpen)         = 10
+getStackPriority LexemeOpen           = 10
 
 popFromStack :: Stack -> Pool -> Either Exception (Stack, Pool)
-popFromStack ((LexemeOperand value):stackRest) pool = Right (stackRest, [value] ++ pool)
-popFromStack ((LexemeOperator Add):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs + rhs] ++ poolRest)
-popFromStack ((LexemeOperator Sub):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs - rhs] ++ poolRest)
-popFromStack ((LexemeOperator Mul):stackRest) (rhs:lhs:poolRest) = Right (stackRest, [lhs * rhs] ++ poolRest)
+popFromStack ((LexemeOperand value):stackRest) pool = Right (stackRest, value : pool)
+popFromStack ((LexemeOperator Add):stackRest) (rhs:lhs:poolRest) = Right (stackRest, (lhs + rhs) : poolRest)
+popFromStack ((LexemeOperator Sub):stackRest) (rhs:lhs:poolRest) = Right (stackRest, (lhs - rhs) : poolRest)
+popFromStack ((LexemeOperator Mul):stackRest) (rhs:lhs:poolRest) = Right (stackRest, (lhs * rhs) : poolRest)
 popFromStack ((LexemeOperator Div):stackRest) (rhs:lhs:poolRest)
     | rhs == 0.0 = Left $ Exception "Division by zero"
-    | otherwise  = Right (stackRest, [lhs / rhs] ++ poolRest)
-popFromStack ((LexemeOperator Pos):stackRest) (op:poolRest) = Right (stackRest, [op] ++ poolRest)
-popFromStack ((LexemeOperator Neg):stackRest) (op:poolRest) = Right (stackRest, [-op] ++ poolRest)
-popFromStack ((LexemeOperator Add):_) _ = Left (Exception "Not enough operands for operator +")
-popFromStack ((LexemeOperator Sub):_) _ = Left (Exception "Not enough operands for operator -")
-popFromStack ((LexemeOperator Mul):_) _ = Left (Exception "Not enough operands for operator *")
-popFromStack ((LexemeOperator Div):_) _ = Left (Exception "Not enough operands for operator /")
-popFromStack ((LexemeOperator Pos):_) _ = Left (Exception "Not enough operands for unary operator +")
-popFromStack ((LexemeOperator Neg):_) _ = Left (Exception "Not enough operands for unary operator -")
+    | otherwise  = Right (stackRest, (lhs / rhs) : poolRest)
+popFromStack ((LexemeOperator Pos):stackRest) (op:poolRest) = Right (stackRest, op : poolRest)
+popFromStack ((LexemeOperator Neg):stackRest) (op:poolRest) = Right (stackRest, (-op) : poolRest)
+popFromStack ((LexemeOperator Add):_) _ = Left $ Exception "Not enough operands for operator +"
+popFromStack ((LexemeOperator Sub):_) _ = Left $ Exception "Not enough operands for operator -"
+popFromStack ((LexemeOperator Mul):_) _ = Left $ Exception "Not enough operands for operator *"
+popFromStack ((LexemeOperator Div):_) _ = Left $ Exception "Not enough operands for operator /"
+popFromStack ((LexemeOperator Pos):_) _ = Left $ Exception "Not enough operands for unary operator +"
+popFromStack ((LexemeOperator Neg):_) _ = Left $ Exception "Not enough operands for unary operator -"
 popFromStack _ _ = Left (Exception "Internal error")
 
 popFromStackAndContinue :: Lexeme -> Stack -> Pool -> Either Exception (Stack, Pool)
@@ -271,41 +276,41 @@ popFromStackAndContinue lexeme stack pool
         result = popFromStack stack pool
 
 pushToStackAndContinue :: Lexeme -> Stack -> Pool -> Either Exception (Stack, Pool)
-pushToStackAndContinue (LexemeClose) [] pool = Left (Exception "Unmatched closing bracket")
-pushToStackAndContinue (LexemeClose) (LexemeOpen:stackRest) (poolTop:poolRest) = Right ([(LexemeOperand poolTop)] ++ stackRest, poolRest)
-pushToStackAndContinue (LexemeEof) (LexemeOpen:_) pool = Left (Exception "Unmatched opening bracket")
+pushToStackAndContinue LexemeClose [] pool = Left $ Exception "Unmatched closing bracket"
+pushToStackAndContinue LexemeClose (LexemeOpen:stackRest) (poolTop:poolRest) = Right (LexemeOperand poolTop:stackRest, poolRest)
+pushToStackAndContinue LexemeEof (LexemeOpen:_) pool = Left $ Exception "Unmatched opening bracket"
 pushToStackAndContinue lexeme [] pool = Right ([lexeme], pool)
 pushToStackAndContinue lexeme stack pool
-    | inputPrio < stackPrio = Right ([lexeme] ++ stack, pool)
+    | inputPrio < stackPrio = Right (lexeme : stack, pool)
     | otherwise = popFromStackAndContinue lexeme stack pool
     where
         inputPrio = getInputPriority lexeme
         stackPrio = getStackPriority (getStackTop stack)
 
 pushToStack :: Token -> Stack -> Pool -> Either Exception (Stack, Pool)
-pushToStack (TokenEof) (LexemeOperator op:_) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
-pushToStack (TokenEof) stack pool = pushToStackAndContinue (LexemeEof) stack pool
+pushToStack TokenEof (LexemeOperator op:_) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
+pushToStack TokenEof stack pool = pushToStackAndContinue LexemeEof stack pool
 pushToStack (TokenNumber value) (LexemeOperand _:_) pool = Left (Exception "Operator expected")
 pushToStack (TokenNumber value) stack pool = pushToStackAndContinue (LexemeOperand value) stack pool
-pushToStack (TokenPlus) stack pool =
+pushToStack TokenPlus stack pool =
     case stack of
         []                   -> pushToStackAndContinue (LexemeOperator Pos) stack pool
         (LexemeOpen:_)       -> pushToStackAndContinue (LexemeOperator Pos) stack pool
         (LexemeOperator _:_) -> pushToStackAndContinue (LexemeOperator Pos) stack pool
-        otherwise            -> pushToStackAndContinue (LexemeOperator Add) stack pool
-pushToStack (TokenMinus) stack pool =
+        _                    -> pushToStackAndContinue (LexemeOperator Add) stack pool
+pushToStack TokenMinus stack pool =
     case stack of
         []                   -> pushToStackAndContinue (LexemeOperator Neg) stack pool
         (LexemeOpen:_)       -> pushToStackAndContinue (LexemeOperator Neg) stack pool
         (LexemeOperator _:_) -> pushToStackAndContinue (LexemeOperator Neg) stack pool
-        otherwise            -> pushToStackAndContinue (LexemeOperator Sub) stack pool
-pushToStack (TokenStar) stack pool = pushToStackAndContinue (LexemeOperator Mul) stack pool
-pushToStack (TokenSlash) stack pool = pushToStackAndContinue (LexemeOperator Div) stack pool
-pushToStack (TokenOpenPar) (LexemeOperand _:_) pool = Left (Exception "Operator expected")
-pushToStack (TokenOpenPar) stack pool = pushToStackAndContinue (LexemeOpen) stack pool
-pushToStack (TokenClosePar) (LexemeOperator op:_) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
-pushToStack (TokenClosePar) (LexemeOpen:_) pool = Left (Exception "Empty parentheses")
-pushToStack (TokenClosePar) stack pool = pushToStackAndContinue (LexemeClose) stack pool
+        _                    -> pushToStackAndContinue (LexemeOperator Sub) stack pool
+pushToStack TokenStar stack pool = pushToStackAndContinue (LexemeOperator Mul) stack pool
+pushToStack TokenSlash stack pool = pushToStackAndContinue (LexemeOperator Div) stack pool
+pushToStack TokenOpenPar (LexemeOperand _:_) pool = Left (Exception "Operator expected")
+pushToStack TokenOpenPar stack pool = pushToStackAndContinue LexemeOpen stack pool
+pushToStack TokenClosePar (LexemeOperator op:_) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
+pushToStack TokenClosePar (LexemeOpen:_) pool = Left (Exception "Empty parentheses")
+pushToStack TokenClosePar stack pool = pushToStackAndContinue LexemeClose stack pool
 
 popFromPool :: [Float] -> Either Exception Float
 popFromPool [] = Left (Exception "Pool is empty")
