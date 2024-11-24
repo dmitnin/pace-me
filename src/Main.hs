@@ -10,7 +10,7 @@ import Text.Printf (printf)
 
 
 data Operand = Distance Float | Time Float | Pace Float
-data Operator = Add | Sub | Mul | Div
+data Operator = Add | Sub | Mul | Div | Pos | Neg
 data Exception = Exception String
 
 asOperator :: String -> Either Exception Operator
@@ -203,24 +203,45 @@ type Pool = [Float]
 getStackTop :: Stack -> Lexeme
 getStackTop (top:_) = top
 
+{-
+     | Stack
+ In  | Opr | Mul | Div | Pos | Neg | Add | Sub |  (  |
+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+ Opr |  E  |  −  |  −  |  −  |  −  |  −  |  −  |  −  |  1  |
+ Pos |  E  |  −  |  −  |  −  |  −  |  −  |  −  |  −  |  3  |
+ Neg |  E  |  −  |  −  |  −  |  −  |  −  |  −  |  −  |  3  |
+  (  |  E  |  −  |  −  |  −  |  −  |  −  |  −  |  −  |  3  |
+ Mul |  +  |  +  |  +  |  −  |  −  |  −  |  −  |  −  |  5  |
+ Div |  +  |  +  |  +  |  −  |  −  |  −  |  −  |  −  |  5  |
+ Add |  +  |  +  |  +  |  +  |  +  |  +  |  +  |  −  |  7  |
+ Sub |  +  |  +  |  +  |  +  |  +  |  +  |  +  |  −  |  7  |
+  )  |  +  |  +  |  +  |  +  |  +  |  +  |  +  |  @  |  9  |
+ Eof |  +  |  +  |  +  |  +  |  +  |  +  |  +  |  E  | 11  |
+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+     |  2  |  4  |  4  |  6  |  6  |  6  |  6  |  10 |
+-}
+
 getInputPriority :: Lexeme -> Int
-getInputPriority (LexemeOperand _)    = 0
-getInputPriority (LexemeOpen)         = 0
-getInputPriority (LexemeOperator Mul) = 2
-getInputPriority (LexemeOperator Div) = 2
-getInputPriority (LexemeOperator Add) = 4
-getInputPriority (LexemeOperator Sub) = 4
-getInputPriority (LexemeClose)        = 8
-getInputPriority (LexemeEof)          = 9
+getInputPriority (LexemeOperand _)    =  1
+getInputPriority (LexemeOperator Pos) =  3
+getInputPriority (LexemeOperator Neg) =  3
+getInputPriority (LexemeOpen)         =  3
+getInputPriority (LexemeOperator Mul) =  5
+getInputPriority (LexemeOperator Div) =  5
+getInputPriority (LexemeOperator Add) =  7
+getInputPriority (LexemeOperator Sub) =  7
+getInputPriority (LexemeClose)        =  9
+getInputPriority (LexemeEof)          = 11
 
 getStackPriority :: Lexeme -> Int
-getStackPriority (LexemeOperand _)    = 0
-getStackPriority (LexemeOperator Mul) = 1
-getStackPriority (LexemeOperator Div) = 1
-getStackPriority (LexemeOperator Add) = 3
-getStackPriority (LexemeOperator Sub) = 3
-getStackPriority (LexemeOpen)         = 8
-getStackPriority (LexemeEof)          = 9
+getStackPriority (LexemeOperand _)    =  2
+getStackPriority (LexemeOperator Mul) =  4
+getStackPriority (LexemeOperator Div) =  4
+getStackPriority (LexemeOperator Pos) =  6
+getStackPriority (LexemeOperator Neg) =  6
+getStackPriority (LexemeOperator Add) =  6
+getStackPriority (LexemeOperator Sub) =  6
+getStackPriority (LexemeOpen)         = 10
 
 popFromStack :: Stack -> Pool -> Either Exception (Stack, Pool)
 popFromStack ((LexemeOperand value):stackRest) pool = Right (stackRest, [value] ++ pool)
@@ -230,10 +251,14 @@ popFromStack ((LexemeOperator Mul):stackRest) (rhs:lhs:poolRest) = Right (stackR
 popFromStack ((LexemeOperator Div):stackRest) (rhs:lhs:poolRest)
     | rhs == 0.0 = Left $ Exception "Division by zero"
     | otherwise  = Right (stackRest, [lhs / rhs] ++ poolRest)
+popFromStack ((LexemeOperator Pos):stackRest) (op:poolRest) = Right (stackRest, [op] ++ poolRest)
+popFromStack ((LexemeOperator Neg):stackRest) (op:poolRest) = Right (stackRest, [-op] ++ poolRest)
 popFromStack ((LexemeOperator Add):_) _ = Left (Exception "Not enough operands for operator +")
 popFromStack ((LexemeOperator Sub):_) _ = Left (Exception "Not enough operands for operator -")
 popFromStack ((LexemeOperator Mul):_) _ = Left (Exception "Not enough operands for operator *")
 popFromStack ((LexemeOperator Div):_) _ = Left (Exception "Not enough operands for operator /")
+popFromStack ((LexemeOperator Pos):_) _ = Left (Exception "Not enough operands for unary operator +")
+popFromStack ((LexemeOperator Neg):_) _ = Left (Exception "Not enough operands for unary operator -")
 popFromStack _ _ = Left (Exception "Internal error")
 
 popFromStackAndContinue :: Lexeme -> Stack -> Pool -> Either Exception (Stack, Pool)
@@ -262,15 +287,25 @@ pushToStack (TokenEof) (LexemeOperator op:_) pool = Left $ Exception ("Not enoug
 pushToStack (TokenEof) stack pool = pushToStackAndContinue (LexemeEof) stack pool
 pushToStack (TokenNumber value) (LexemeOperand _:_) pool = Left (Exception "Operator expected")
 pushToStack (TokenNumber value) stack pool = pushToStackAndContinue (LexemeOperand value) stack pool
-pushToStack (TokenPlus) stack pool = pushToStackAndContinue (LexemeOperator Add) stack pool
-pushToStack (TokenMinus) stack pool = pushToStackAndContinue (LexemeOperator Sub) stack pool
+pushToStack (TokenPlus) stack pool =
+    case stack of
+        []                   -> pushToStackAndContinue (LexemeOperator Pos) stack pool
+        (LexemeOpen:_)       -> pushToStackAndContinue (LexemeOperator Pos) stack pool
+        (LexemeOperator _:_) -> pushToStackAndContinue (LexemeOperator Pos) stack pool
+        otherwise            -> pushToStackAndContinue (LexemeOperator Add) stack pool
+pushToStack (TokenMinus) stack pool =
+    case stack of
+        []                   -> pushToStackAndContinue (LexemeOperator Neg) stack pool
+        (LexemeOpen:_)       -> pushToStackAndContinue (LexemeOperator Neg) stack pool
+        (LexemeOperator _:_) -> pushToStackAndContinue (LexemeOperator Neg) stack pool
+        otherwise            -> pushToStackAndContinue (LexemeOperator Sub) stack pool
 pushToStack (TokenStar) stack pool = pushToStackAndContinue (LexemeOperator Mul) stack pool
 pushToStack (TokenSlash) stack pool = pushToStackAndContinue (LexemeOperator Div) stack pool
 pushToStack (TokenOpenPar) (LexemeOperand _:_) pool = Left (Exception "Operator expected")
-pushToStack (TokenOpenPar)         stack pool = pushToStackAndContinue (LexemeOpen) stack pool
+pushToStack (TokenOpenPar) stack pool = pushToStackAndContinue (LexemeOpen) stack pool
 pushToStack (TokenClosePar) (LexemeOperator op:_) pool = Left $ Exception ("Not enough operands for operator " ++ show (LexemeOperator op))
 pushToStack (TokenClosePar) (LexemeOpen:_) pool = Left (Exception "Empty parentheses")
-pushToStack (TokenClosePar)        stack pool = pushToStackAndContinue (LexemeClose) stack pool
+pushToStack (TokenClosePar) stack pool = pushToStackAndContinue (LexemeClose) stack pool
 
 popFromPool :: [Float] -> Either Exception Float
 popFromPool [] = Left (Exception "Pool is empty")
