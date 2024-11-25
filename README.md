@@ -22,3 +22,17 @@ cabal install pcre-light
 cabal build
 cabal run
 ```
+
+# Linter #
+
+```bash
+sudo apt install hlint
+hlint src/Main.hs
+```
+
+# Formatter #
+
+```bash
+cabal install fourmolu
+fourmolu --mode inplace src/Main.hs
+```
