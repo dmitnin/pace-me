@@ -376,43 +376,45 @@ pushToStack (TokenWithOffset token offset) stack pool =
     case token of
         TokenEof ->
             case stackTop of
-                Just (LexemeUnaryOp op) -> Left $ buildExceptionWithOffset ("Not enough operands for unary operator " ++ show op) (stackTopOffset stack)
-                Just (LexemeBinaryOp op) -> Left $ buildExceptionWithOffset ("Not enough operands for binary operator " ++ show op) (stackTopOffset stack)
-                _ -> pushToStackAndContinue (LexemeWithOffset LexemeEof offset) stack pool
+                Just (LexemeUnaryOp op) -> throw ("Not enough operands for unary operator " ++ show op) (stackTopOffset stack)
+                Just (LexemeBinaryOp op) -> throw ("Not enough operands for binary operator " ++ show op) (stackTopOffset stack)
+                _ -> pushLexemeAndContinue LexemeEof
         (TokenNumber value) ->
             case stackTop of
-                Just (LexemeOperand _) -> Left $ buildExceptionWithOffset "Operator expected" offset
-                _ -> pushToStackAndContinue (LexemeWithOffset (LexemeOperand value) offset) stack pool
+                Just (LexemeOperand _) -> throw "Operator expected" offset
+                _ -> pushLexemeAndContinue (LexemeOperand value)
         TokenPlus ->
             case stackTop of
-                Nothing -> pushToStackAndContinue (LexemeWithOffset (LexemeUnaryOp UnaryPlus) offset) stack pool
-                Just LexemeParenOpen -> pushToStackAndContinue (LexemeWithOffset (LexemeUnaryOp UnaryPlus) offset) stack pool
-                Just (LexemeUnaryOp _) -> pushToStackAndContinue (LexemeWithOffset (LexemeUnaryOp UnaryPlus) offset) stack pool
-                Just (LexemeBinaryOp _) -> pushToStackAndContinue (LexemeWithOffset (LexemeUnaryOp UnaryPlus) offset) stack pool
-                _ -> pushToStackAndContinue (LexemeWithOffset (LexemeBinaryOp BinaryAdd) offset) stack pool
+                Nothing -> pushLexemeAndContinue (LexemeUnaryOp UnaryPlus)
+                Just LexemeParenOpen -> pushLexemeAndContinue (LexemeUnaryOp UnaryPlus)
+                Just (LexemeUnaryOp _) -> pushLexemeAndContinue (LexemeUnaryOp UnaryPlus)
+                Just (LexemeBinaryOp _) -> pushLexemeAndContinue (LexemeUnaryOp UnaryPlus)
+                _ -> pushLexemeAndContinue (LexemeBinaryOp BinaryAdd)
         TokenMinus ->
             case stackTop of
-                Nothing -> pushToStackAndContinue (LexemeWithOffset (LexemeUnaryOp UnaryMinus) offset) stack pool
-                Just LexemeParenOpen -> pushToStackAndContinue (LexemeWithOffset (LexemeUnaryOp UnaryMinus) offset) stack pool
-                Just (LexemeUnaryOp _) -> pushToStackAndContinue (LexemeWithOffset (LexemeUnaryOp UnaryMinus) offset) stack pool
-                Just (LexemeBinaryOp _) -> pushToStackAndContinue (LexemeWithOffset (LexemeUnaryOp UnaryMinus) offset) stack pool
-                _ -> pushToStackAndContinue (LexemeWithOffset (LexemeBinaryOp BinarySub) offset) stack pool
+                Nothing -> pushLexemeAndContinue (LexemeUnaryOp UnaryMinus)
+                Just LexemeParenOpen -> pushLexemeAndContinue (LexemeUnaryOp UnaryMinus)
+                Just (LexemeUnaryOp _) -> pushLexemeAndContinue (LexemeUnaryOp UnaryMinus)
+                Just (LexemeBinaryOp _) -> pushLexemeAndContinue (LexemeUnaryOp UnaryMinus)
+                _ -> pushLexemeAndContinue (LexemeBinaryOp BinarySub)
         TokenStar ->
-            pushToStackAndContinue (LexemeWithOffset (LexemeBinaryOp BinaryMul) offset) stack pool
+            pushLexemeAndContinue (LexemeBinaryOp BinaryMul)
         TokenSlash ->
-            pushToStackAndContinue (LexemeWithOffset (LexemeBinaryOp BinaryDiv) offset) stack pool
+            pushLexemeAndContinue (LexemeBinaryOp BinaryDiv)
         TokenOpenPar ->
             case stackTop of
-                Just (LexemeOperand _) -> Left $ buildExceptionWithOffset "Operator expected" offset
-                _ -> pushToStackAndContinue (LexemeWithOffset LexemeParenOpen offset) stack pool
+                Just (LexemeOperand _) -> throw "Operator expected" offset
+                _ -> pushLexemeAndContinue LexemeParenOpen
         TokenClosePar ->
             case stackTop of
-                Just (LexemeUnaryOp op) -> Left $ buildExceptionWithOffset ("Not enough operands for unary operator " ++ show op) (stackTopOffset stack)
-                Just (LexemeBinaryOp op) -> Left $ buildExceptionWithOffset ("Not enough operands for binary operator " ++ show op) (stackTopOffset stack)
-                Just LexemeParenOpen -> Left $ buildExceptionWithOffset "Empty parentheses" offset
-                _ -> pushToStackAndContinue (LexemeWithOffset LexemeParenClose offset) stack pool
+                Just (LexemeUnaryOp op) -> throw ("Not enough operands for unary operator " ++ show op) (stackTopOffset stack)
+                Just (LexemeBinaryOp op) -> throw ("Not enough operands for binary operator " ++ show op) (stackTopOffset stack)
+                Just LexemeParenOpen -> throw "Empty parentheses" offset
+                _ -> pushLexemeAndContinue LexemeParenClose
   where
     stackTop = stackTopLexeme stack
+    pushLexemeAndContinue = \lexeme -> pushToStackAndContinue (LexemeWithOffset lexeme offset) stack pool
+    throw = \what offset -> Left $ buildExceptionWithOffset what offset
 
 popFromPool :: [Double] -> Either ExceptionWithOffset Double
 popFromPool [] = Left $ buildExceptionWithOffset "Pool is empty" 0
