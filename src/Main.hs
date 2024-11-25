@@ -318,7 +318,7 @@ popFromStack ((LexemeWithOffset lexeme offset) : stackRest) pool =
             case pool of
                 (rhs : poolRest)
                     | isLeft result -> Left $ ExceptionWithOffset (getLeft result) offset
-                    | isRight result -> Right (stackRest, (getRight result) : poolRest)
+                    | isRight result -> Right (stackRest, getRight result : poolRest)
                   where
                     result = applyUnaryOperator op rhs
                 _ -> Left $ buildExceptionWithOffset ("Not enough operands for unary operator " ++ show op) offset
@@ -326,7 +326,7 @@ popFromStack ((LexemeWithOffset lexeme offset) : stackRest) pool =
             case pool of
                 (rhs : lhs : poolRest)
                     | isLeft result -> Left $ ExceptionWithOffset (getLeft result) offset
-                    | isRight result -> Right (stackRest, (getRight result) : poolRest)
+                    | isRight result -> Right (stackRest, getRight result : poolRest)
                   where
                     result = applyBinaryOperator op lhs rhs
                 _ -> Left $ buildExceptionWithOffset ("Not enough operands for binary operator " ++ show op) offset
@@ -354,11 +354,11 @@ pushToStackAndContinue (LexemeWithOffset lexeme offset) stack pool =
                 (poolTop : poolRest) -> Right (LexemeWithOffset (LexemeOperand poolTop) 0 : stackRest, poolRest)
                 _ -> Left $ buildExceptionWithOffset "Internal error (empty)" offset
         (_, _)
-            | inputPrio < stackPrio -> Right ((LexemeWithOffset lexeme offset) : stack, pool)
+            | inputPrio < stackPrio -> Right (LexemeWithOffset lexeme offset : stack, pool)
             | otherwise -> popFromStackAndContinue (LexemeWithOffset lexeme offset) stack pool
           where
             inputPrio = getInputPriority lexeme
-            stackPrio = getStackPriority (stackTop)
+            stackPrio = getStackPriority stackTop
   where
     stackTop = getLexeme (head stack)
     stackTopOffset = getLexemeOffset (head stack)
