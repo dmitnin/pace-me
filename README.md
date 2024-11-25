@@ -17,14 +17,28 @@ cd pace-me
 # To fix the error:
 # fatal: detected dubious ownership in repository at '/PATH_TO/pace-me'
 git config --global --add safe.directory /PATH_TO/pace-me
+
+# Configure git user
+git config --global user.email "you@example.com"
+git config --global user.name "Your Name"
 ```
 
-# Install Dependencies #
+## Install System Packages ##
+
+### Linux ###
 
 ```bash
 sudo apt install ghc
 sudo apt install cabal-install
 sudo apt-get install libpcre3 libpcre3-dev
+```
+
+### Termux ###
+
+```bash
+pkg install ghc
+pkg install cabal-install
+pkg install pcre
 ```
 
 cabal install pcre-light
