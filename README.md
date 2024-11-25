@@ -2,8 +2,21 @@
 
 ```bash
 ssh-keygen -t ed25519 -C "your-name@domain.com"
+
+# In Termux
+eval $(ssh-agent -s)
+
 ssh-add ~/.ssh/github
-git clone git@github.com:your-name/pace-me.git
+
+# Check the key has been added:
+ssh-add -l
+
+git clone git@github.com:dmitnin/pace-me.git
+cd pace-me
+
+# To fix the error:
+# fatal: detected dubious ownership in repository at '/PATH_TO/pace-me'
+git config --global --add safe.directory /PATH_TO/pace-me
 ```
 
 # Install Dependencies #
